@@ -1,0 +1,631 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg-primary: #fffdf3;
+  --bg-secondary: #fff7d6;
+  --bg-tertiary: #ffeec1;
+  --text-primary: #6c3d10;
+  --text-secondary: #8f5e23;
+  --text-tertiary: #b7884a;
+  --border: rgba(170, 105, 41, 0.2);
+  --border-mid: rgba(170, 105, 41, 0.35);
+  --success-bg: #e7f8d9;
+  --success-text: #397a2d;
+  --danger-bg: #ffd9d1;
+  --danger-text: #c1402f;
+  --radius-md: 14px;
+  --radius-lg: 22px;
+}
+
+body {
+  font-family: 'Baloo 2', 'Comic Sans MS', 'Trebuchet MS', 'Segoe UI', sans-serif;
+  background: linear-gradient(180deg, #fff4bf 0%, #ffe7a3 55%, #fff9df 100%);
+  color: var(--text-primary);
+  min-height: 100vh;
+  padding: 1.5rem 1rem;
+  position: relative;
+}
+
+body::before,
+body::after {
+  content: '';
+  position: fixed;
+  border-radius: 999px;
+  z-index: -1;
+  pointer-events: none;
+}
+
+body::before {
+  width: 210px;
+  height: 210px;
+  background: rgba(217, 67, 54, 0.22);
+  top: -70px;
+  right: -40px;
+}
+
+body::after {
+  width: 180px;
+  height: 180px;
+  background: rgba(255, 195, 68, 0.35);
+  bottom: -40px;
+  left: -35px;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.container {
+  max-width: 580px;
+  margin: 0 auto;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 20px;
+}
+
+.badge-confirm {
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+
+.badge-decline {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+
+.badge-pending {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+
+.card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.1rem 1.25rem;
+  margin-bottom: 12px;
+  box-shadow: 0 8px 20px rgba(149, 119, 178, 0.08);
+}
+
+.member-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 0.5px solid var(--border);
+}
+
+.member-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.member-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.btn-group {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.btn-rsvp {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--border-mid);
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.18s ease;
+}
+
+.btn-rsvp.selected-yes {
+  background: var(--success-bg);
+  color: var(--success-text);
+  border-color: transparent;
+}
+
+.btn-rsvp.selected-no {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+  border-color: transparent;
+}
+
+.btn-rsvp:hover {
+  background: #ffeeb4;
+  transform: translateY(-1px);
+}
+
+.btn-primary {
+  width: 100%;
+  padding: 11px;
+  background: linear-gradient(135deg, #d94336 0%, #ba2f24 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 8px 18px rgba(217, 67, 54, 0.28);
+}
+
+.btn-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  padding: 7px 16px;
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-md);
+  background: #fff6d7;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.nav-tabs {
+  display: flex;
+  border-bottom: 0.5px solid var(--border);
+  margin-bottom: 1.5rem;
+}
+
+.tab {
+  padding: 8px 0;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  margin-right: 20px;
+  border: none;
+  background: none;
+  font: inherit;
+  border-bottom: 2px solid transparent;
+}
+
+.tab.active {
+  color: var(--text-primary);
+  font-weight: 700;
+  border-bottom-color: #d94336;
+}
+
+.family-admin-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.25rem;
+  margin-bottom: 10px;
+  background: var(--bg-primary);
+  box-shadow: 0 8px 18px rgba(149, 119, 178, 0.06);
+}
+
+.family-note-box {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+.family-note-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 4px;
+}
+
+.family-note-text {
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.link-box {
+  background: #fff8db;
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  font-size: 12px;
+  font-family: ui-monospace, monospace;
+  color: var(--text-secondary);
+  margin: 8px 0;
+  word-break: break-all;
+}
+
+.metric {
+  background: #fff8d8;
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  text-align: center;
+  flex: 1;
+  min-width: 72px;
+  border: 1px solid var(--border);
+}
+
+.metric-num {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.metric-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.metrics-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.pill-nav {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.pill {
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  border: 0.5px solid var(--border-mid);
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.pill.active {
+  background: var(--text-primary);
+  color: var(--bg-primary);
+  border-color: transparent;
+}
+
+.section-title {
+  font-size: 22px;
+  font-weight: 800;
+  margin-bottom: 4px;
+  color: var(--text-primary);
+}
+
+.section-sub {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 1.25rem;
+}
+
+.check-icon {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: var(--success-bg);
+  color: var(--success-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+  font-size: 26px;
+  box-shadow: 0 8px 16px rgba(47, 140, 104, 0.2);
+}
+
+
+input[type='text'],
+input[type='email'],
+textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-mid);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+  margin-top: 4px;
+}
+
+textarea {
+  min-height: 100px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+
+label.field-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  display: block;
+  margin-top: 10px;
+}
+
+.row-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.hint {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 6px;
+}
+
+.warn {
+  font-size: 12px;
+  color: var(--danger-text);
+  background: var(--danger-bg);
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  margin-bottom: 10px;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 50;
+}
+
+@media (min-width: 520px) {
+  .modal-backdrop {
+    align-items: center;
+  }
+}
+
+.modal {
+  background: var(--bg-primary);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+  width: 100%;
+  max-width: 420px;
+  max-height: 90vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+}
+
+.modal h3 {
+  font-size: 16px;
+  font-weight: 500;
+  margin-bottom: 12px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  justify-content: flex-end;
+}
+
+.error-banner {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+a.admin-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* RSVP convidado: fundo ilustrado + card em vidro (mobile-first) */
+body.rsvp-guest-page {
+  padding: 0;
+  background: transparent;
+}
+
+body.rsvp-guest-page::before,
+body.rsvp-guest-page::after {
+  display: none;
+}
+
+.rsvp-guest-screen {
+  position: relative;
+  z-index: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.rsvp-guest-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: stretch;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.rsvp-guest-submit-wrap {
+  margin-top: 10px;
+}
+
+/* Bloco lista + recado + botão: sobe para não cobrir o texto da arte */
+.rsvp-guest-cluster {
+  transform: translateY(-52px);
+}
+
+.rsvp-guest-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-color: #b8d9f0;
+  background-image: url('/rsvp-bg.png');
+  background-size: cover;
+  background-position: center top;
+  background-repeat: no-repeat;
+}
+
+.rsvp-guest-inner {
+  position: relative;
+  z-index: 1;
+  padding: 1.5rem 1rem;
+  padding-bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
+  padding-left: max(1rem, env(safe-area-inset-left, 0px));
+  padding-right: max(1rem, env(safe-area-inset-right, 0px));
+  padding-top: max(1.5rem, env(safe-area-inset-top, 0px));
+}
+
+.card.card-glass {
+  background: rgba(255, 253, 248, 0.42);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow: 0 8px 32px rgba(80, 60, 40, 0.12);
+}
+
+/* RSVP: paleta do convite (teal + mel) e tipografia menor */
+.rsvp-guest-screen {
+  --rsvp-teal: #1f6b6b;
+  --rsvp-teal-mid: #2d8a8a;
+  --rsvp-teal-soft: rgba(31, 107, 107, 0.12);
+  --rsvp-honey: #e8b82a;
+  --rsvp-honey-deep: #c49518;
+  --rsvp-cream-glass: rgba(255, 252, 242, 0.52);
+  --rsvp-yes: #3d9a6a;
+  --rsvp-yes-bg: rgba(61, 154, 106, 0.18);
+  --rsvp-no: #c75a4a;
+  --rsvp-no-bg: rgba(199, 90, 74, 0.16);
+}
+
+.rsvp-guest-screen .card.card-glass {
+  background: var(--rsvp-cream-glass);
+  border: 1px solid rgba(31, 107, 107, 0.22);
+  box-shadow: 0 8px 28px rgba(31, 107, 107, 0.12);
+  padding: 0.85rem 1rem;
+}
+
+.rsvp-guest-screen .card.card-glass .member-row {
+  border-bottom-color: rgba(31, 107, 107, 0.14);
+  padding: 8px 0;
+}
+
+.rsvp-guest-screen .member-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--rsvp-teal);
+}
+
+.rsvp-guest-screen .btn-rsvp {
+  font-size: 10px;
+  padding: 5px 8px;
+  color: var(--rsvp-teal-mid);
+  border-color: rgba(31, 107, 107, 0.28);
+  white-space: nowrap;
+}
+
+.rsvp-guest-screen .btn-rsvp:hover {
+  background: var(--rsvp-teal-soft);
+}
+
+.rsvp-guest-screen .btn-rsvp.selected-yes {
+  background: var(--rsvp-yes-bg);
+  color: var(--rsvp-yes);
+  border-color: transparent;
+}
+
+.rsvp-guest-screen .btn-rsvp.selected-no {
+  background: var(--rsvp-no-bg);
+  color: var(--rsvp-no);
+  border-color: transparent;
+}
+
+.rsvp-guest-screen .btn-primary.rsvp-guest-btn-send {
+  background: linear-gradient(135deg, var(--rsvp-honey) 0%, var(--rsvp-honey-deep) 100%);
+  color: #fffdf5;
+  font-size: 13px;
+  padding: 10px;
+  box-shadow: 0 6px 18px rgba(196, 149, 24, 0.35);
+}
+
+.rsvp-guest-screen .btn-primary.rsvp-guest-btn-send:disabled {
+  opacity: 0.5;
+}
+
+.rsvp-guest-recado {
+  display: block;
+  margin-top: 12px;
+}
+
+.rsvp-guest-recado-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--rsvp-teal);
+  margin-bottom: 6px;
+}
+
+.rsvp-guest-screen .rsvp-guest-recado textarea {
+  width: 100%;
+  min-height: 76px;
+  margin-top: 0;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-family: inherit;
+  line-height: 1.4;
+  color: var(--rsvp-teal);
+  background: var(--rsvp-cream-glass);
+  border: 1px solid rgba(31, 107, 107, 0.22);
+  border-radius: var(--radius-md);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  resize: vertical;
+  box-shadow: 0 4px 16px rgba(31, 107, 107, 0.08);
+}
+
+.rsvp-guest-screen .rsvp-guest-recado textarea::placeholder {
+  color: rgba(31, 107, 107, 0.45);
+}
+
+.rsvp-guest-main .error-banner {
+  margin-bottom: 12px;
+}
+
+body.rsvp-guest-page .error-banner {
+  background: rgba(255, 217, 209, 0.88);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+}

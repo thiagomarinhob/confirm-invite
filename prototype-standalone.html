@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Confirmação de presença</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg-primary: #ffffff;
+      --bg-secondary: #f5f5f4;
+      --bg-tertiary: #efefed;
+      --text-primary: #1c1c1a;
+      --text-secondary: #6b6b67;
+      --text-tertiary: #9c9a94;
+      --border: rgba(0,0,0,0.12);
+      --border-mid: rgba(0,0,0,0.22);
+      --success-bg: #eaf3de;
+      --success-text: #3b6d11;
+      --danger-bg: #fcebeb;
+      --danger-text: #a32d2d;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-primary: #1c1c1a;
+        --bg-secondary: #272724;
+        --bg-tertiary: #313130;
+        --text-primary: #e8e6e0;
+        --text-secondary: #9c9a94;
+        --text-tertiary: #6b6b67;
+        --border: rgba(255,255,255,0.1);
+        --border-mid: rgba(255,255,255,0.2);
+        --success-bg: #173404;
+        --success-text: #c0dd97;
+        --danger-bg: #501313;
+        --danger-text: #f09595;
+      }
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg-tertiary); color: var(--text-primary); min-height: 100vh; padding: 1.5rem 1rem; }
+    .container { max-width: 580px; margin: 0 auto; }
+    .badge { display: inline-block; font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 20px; }
+    .badge-confirm { background: var(--success-bg); color: var(--success-text); }
+    .badge-decline { background: var(--danger-bg); color: var(--danger-text); }
+    .badge-pending { background: var(--bg-secondary); color: var(--text-secondary); }
+    .card { background: var(--bg-primary); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 1rem 1.25rem; margin-bottom: 12px; }
+    .member-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 0.5px solid var(--border); }
+    .member-row:last-child { border-bottom: none; padding-bottom: 0; }
+    .member-name { font-size: 14px; color: var(--text-primary); }
+    .btn-group { display: flex; gap: 8px; flex-shrink: 0; }
+    .btn-rsvp { font-size: 12px; padding: 5px 12px; border-radius: 20px; border: 0.5px solid var(--border-mid); background: transparent; cursor: pointer; color: var(--text-secondary); transition: all 0.15s; }
+    .btn-rsvp.selected-yes { background: var(--success-bg); color: var(--success-text); border-color: transparent; }
+    .btn-rsvp.selected-no { background: var(--danger-bg); color: var(--danger-text); border-color: transparent; }
+    .btn-rsvp:hover { background: var(--bg-secondary); }
+    .btn-primary { width: 100%; padding: 10px; background: var(--text-primary); color: var(--bg-primary); border: none; border-radius: var(--radius-md); cursor: pointer; font-size: 14px; font-weight: 500; }
+    .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-secondary { padding: 7px 16px; border: 0.5px solid var(--border-mid); border-radius: var(--radius-md); background: transparent; cursor: pointer; font-size: 13px; color: var(--text-secondary); }
+    .nav-tabs { display: flex; border-bottom: 0.5px solid var(--border); margin-bottom: 1.5rem; }
+    .tab { padding: 8px 0; font-size: 13px; cursor: pointer; color: var(--text-secondary); margin-right: 20px; border-bottom: 2px solid transparent; }
+    .tab.active { color: var(--text-primary); font-weight: 500; border-bottom-color: var(--text-primary); }
+    .family-admin-card { border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 1rem 1.25rem; margin-bottom: 10px; background: var(--bg-primary); }
+    .link-box { background: var(--bg-secondary); border-radius: var(--radius-md); padding: 8px 12px; font-size: 12px; font-family: ui-monospace, monospace; color: var(--text-secondary); margin: 8px 0; word-break: break-all; }
+    .metric { background: var(--bg-secondary); border-radius: var(--radius-md); padding: 1rem; text-align: center; flex: 1; }
+    .metric-num { font-size: 24px; font-weight: 500; color: var(--text-primary); }
+    .metric-label { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+    .metrics-row { display: flex; gap: 10px; margin-bottom: 1.5rem; flex-wrap: wrap; }
+    .pill-nav { display: flex; gap: 8px; margin-bottom: 1rem; flex-wrap: wrap; }
+    .pill { font-size: 12px; padding: 4px 12px; border-radius: 20px; border: 0.5px solid var(--border-mid); cursor: pointer; background: transparent; color: var(--text-secondary); }
+    .pill.active { background: var(--text-primary); color: var(--bg-primary); border-color: transparent; }
+    .section-title { font-size: 16px; font-weight: 500; margin-bottom: 4px; color: var(--text-primary); }
+    .section-sub { font-size: 13px; color: var(--text-secondary); margin-bottom: 1.25rem; }
+    .check-icon { width: 48px; height: 48px; border-radius: 50%; background: var(--success-bg); color: var(--success-text); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; font-size: 22px; }
+    input[type="text"], input[type="email"], textarea {
+      width: 100%; padding: 8px 10px; border-radius: var(--radius-md); border: 0.5px solid var(--border-mid);
+      background: var(--bg-primary); color: var(--text-primary); font-size: 14px; margin-top: 4px;
+    }
+    textarea { min-height: 100px; font-family: ui-monospace, monospace; font-size: 12px; }
+    label { font-size: 12px; color: var(--text-secondary); display: block; margin-top: 10px; }
+    .row-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+    .hint { font-size: 11px; color: var(--text-tertiary); margin-top: 6px; }
+    .warn { font-size: 12px; color: var(--danger-text); background: var(--danger-bg); padding: 8px 10px; border-radius: var(--radius-md); margin-bottom: 10px; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+<div class="container" id="app">
+  <!-- Painel -->
+  <div id="view-admin">
+    <p class="section-title">Painel do organizador</p>
+    <p class="section-sub">Famílias, links públicos e confirmações. Os dados ficam neste navegador (localStorage).</p>
+
+    <div class="card" style="margin-bottom: 1rem;">
+      <label>Nome do evento</label>
+      <input type="text" id="inp-event-title" placeholder="Ex.: Aniversário da Ana">
+      <label>Data / detalhe (texto livre)</label>
+      <input type="text" id="inp-event-date" placeholder="Ex.: 14 de junho · sábado às 16h">
+      <label>E-mail do organizador (opcional, para abrir o cliente de e-mail no envio)</label>
+      <input type="email" id="inp-organizer-email" placeholder="voce@email.com">
+      <div class="row-actions" style="margin-top: 12px;">
+        <button type="button" class="btn-secondary" id="btn-save-meta">Salvar dados do evento</button>
+        <button type="button" class="btn-secondary" id="btn-export">Exportar backup JSON</button>
+        <label class="btn-secondary" style="cursor:pointer;margin:0;">
+          Importar backup
+          <input type="file" id="inp-import" accept="application/json" class="hidden" style="display:none">
+        </label>
+      </div>
+    </div>
+
+    <div class="metrics-row" id="metrics"></div>
+
+    <div class="nav-tabs">
+      <div class="tab active" data-tab="families">Famílias</div>
+      <div class="tab" data-tab="list">Todos os convidados</div>
+      <div class="tab" data-tab="import">Importar RSVP</div>
+    </div>
+
+    <div id="tab-families">
+      <div id="family-list"></div>
+      <button type="button" class="btn-primary" id="btn-add-family" style="margin-top:8px">+ Adicionar família</button>
+    </div>
+
+    <div id="tab-list" class="hidden">
+      <div class="pill-nav" id="filter-pills">
+        <button type="button" class="pill active" data-filter="all">Todos</button>
+        <button type="button" class="pill" data-filter="yes">Confirmados</button>
+        <button type="button" class="pill" data-filter="no">Não vão</button>
+        <button type="button" class="pill" data-filter="pending">Aguardando</button>
+      </div>
+      <div class="card" id="guest-list"></div>
+    </div>
+
+    <div id="tab-import" class="hidden">
+      <p class="section-sub" style="margin-top:0">Cole abaixo o bloco de texto que o responsável copiou ao confirmar (ou recebeu por WhatsApp) e clique em aplicar.</p>
+      <textarea id="import-text" placeholder="Linhas começando com RSVP_V1..."></textarea>
+      <button type="button" class="btn-primary" style="margin-top:10px" id="btn-import-rsvp">Aplicar importação</button>
+      <p class="hint">Sem servidor: quem abre o link em outro aparelho precisa enviar esse texto de volta para você colar aqui.</p>
+    </div>
+  </div>
+
+  <!-- Convidado -->
+  <div id="view-guest" class="hidden">
+    <div style="text-align:center;margin-bottom:1.5rem">
+      <div style="font-size:20px;margin-bottom:4px">🎂</div>
+      <p class="section-title">Confirmação de presença</p>
+      <p class="section-sub" id="guest-event-line"></p>
+    </div>
+    <div id="guest-warn" class="warn hidden"></div>
+    <div class="card">
+      <div style="font-size:13px;font-weight:500;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:12px" id="guest-family-name"></div>
+      <div id="guest-members"></div>
+    </div>
+    <div style="margin-top:4px">
+      <button type="button" class="btn-primary" id="btn-guest-submit" disabled>Enviar confirmação</button>
+      <p class="hint" style="text-align:center;margin-top:8px">Marque <strong>Vai</strong> ou <strong>Não vai</strong> para cada pessoa antes de enviar.</p>
+    </div>
+  </div>
+
+  <!-- Sucesso convidado -->
+  <div id="view-success" class="hidden">
+    <div style="text-align:center;padding:2rem 0">
+      <div class="check-icon">✓</div>
+      <p class="section-title">Confirmação pronta</p>
+      <p class="section-sub" style="margin-top:6px" id="success-msg"></p>
+      <div class="card" style="text-align:left;margin-top:1.5rem">
+        <div style="font-size:13px;font-weight:500;color:var(--text-secondary);margin-bottom:10px">Resumo</div>
+        <div id="success-summary"></div>
+      </div>
+      <p class="hint" style="margin-top:1rem;">Envie o texto copiado (ou o e-mail gerado) para o organizador.</p>
+      <div class="row-actions" style="justify-content:center;margin-top:1rem;">
+        <button type="button" class="btn-primary" id="btn-copy-block" style="width:auto;padding:10px 20px;">Copiar texto do RSVP</button>
+        <button type="button" class="btn-secondary" id="btn-mailto" style="display:none">Abrir e-mail</button>
+      </div>
+      <pre id="success-block" class="link-box" style="text-align:left;white-space:pre-wrap;margin-top:1rem;max-height:200px;overflow:auto"></pre>
+      <p style="margin-top:1.25rem;text-align:center">
+        <a href="./index.html" class="btn-secondary" style="display:inline-block;text-decoration:none;color:inherit">Painel do organizador</a>
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const STORAGE_KEY = 'convite_rsvp_v1';
+
+  function uid() {
+    return Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
+  }
+
+  function slugify(s) {
+    return String(s || '')
+      .normalize('NFD').replace(/\p{Diacritic}/gu, '')
+      .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'familia';
+  }
+
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return defaultState();
+      const p = JSON.parse(raw);
+      return migrate(p);
+    } catch (_) {
+      return defaultState();
+    }
+  }
+
+  function defaultState() {
+    return {
+      v: 1,
+      eventTitle: 'Aniversário',
+      eventDate: '',
+      organizerEmail: '',
+      families: []
+    };
+  }
+
+  function migrate(p) {
+    if (!p.families) p.families = [];
+    return p;
+  }
+
+  function saveState(state) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  function encodeGuestPayload(payload) {
+    const json = JSON.stringify(payload);
+    return btoa(unescape(encodeURIComponent(json)));
+  }
+
+  function decodeGuestPayload(b64) {
+    try {
+      const json = decodeURIComponent(escape(atob(b64)));
+      return JSON.parse(json);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function guestLinkBase() {
+    const u = new URL(window.location.href);
+    u.hash = '';
+    return u.toString();
+  }
+
+  function buildGuestUrl(state, family) {
+    const payload = {
+      v: 1,
+      slug: family.slug,
+      familyName: family.name,
+      responsible: family.responsible || '',
+      eventTitle: state.eventTitle,
+      eventDate: state.eventDate,
+      members: family.members.map(m => ({ id: m.id, name: m.name }))
+    };
+    const token = encodeGuestPayload(payload);
+    const full = guestLinkBase() + '#rsvp=' + encodeURIComponent(token);
+    return { full, tokenLen: token.length };
+  }
+
+  function parseHashGuest() {
+    const h = window.location.hash;
+    if (!h.startsWith('#rsvp=')) return null;
+    const raw = decodeURIComponent(h.slice(6));
+    return decodeGuestPayload(raw);
+  }
+
+  function buildRsvpBlock(state, familySlug, familyName, choices) {
+    const lines = [
+      'RSVP_V1',
+      'SLUG:' + familySlug,
+      'FAMILIA:' + familyName,
+      'DATA_ISO:' + new Date().toISOString(),
+      'EVENTO:' + (state.eventTitle || ''),
+      '---'
+    ];
+    choices.forEach(c => {
+      lines.push(c.id + ':' + (c.status === 'yes' ? 'SIM' : 'NAO'));
+    });
+    lines.push('---FIM---');
+    return lines.join('\n');
+  }
+
+  function applyRsvpBlock(state, text) {
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    if (lines[0] !== 'RSVP_V1') throw new Error('Cabeçalho inválido. Cole o bloco completo começando com RSVP_V1.');
+    let slug = null;
+    let famName = null;
+    const map = {};
+    for (const line of lines) {
+      if (line.startsWith('SLUG:')) slug = line.slice(5).trim();
+      else if (line.startsWith('FAMILIA:')) famName = line.slice(8).trim();
+      else if (/^([^:]+):(SIM|NAO)$/i.test(line)) {
+        const colon = line.indexOf(':');
+        const id = line.slice(0, colon);
+        const st = line.slice(colon + 1);
+        map[id] = st.toUpperCase() === 'SIM' ? 'yes' : 'no';
+      }
+    }
+    if (!slug) throw new Error('Slug não encontrado no texto.');
+    const fam = state.families.find(f => f.slug === slug);
+    if (!fam) throw new Error('Nenhuma família cadastrada com o slug: ' + slug);
+    let changed = 0;
+    fam.members.forEach(m => {
+      if (map[m.id] !== undefined && m.status !== map[m.id]) {
+        m.status = map[m.id];
+        changed++;
+      }
+    });
+    fam.respondedAt = new Date().toISOString();
+    return { changed, famName: famName || fam.name };
+  }
+
+  function metrics(state) {
+    let yes = 0, no = 0, pend = 0, total = 0;
+    state.families.forEach(f => {
+      f.members.forEach(m => {
+        total++;
+        if (m.status === 'yes') yes++;
+        else if (m.status === 'no') no++;
+        else pend++;
+      });
+    });
+    return { yes, no, pend, total };
+  }
+
+  function familyResponded(f) {
+    return f.members.every(m => m.status === 'yes' || m.status === 'no');
+  }
+
+  let state = loadState();
+  let guestPayload = null;
+  let guestChoices = {};
+
+  const el = (id) => document.getElementById(id);
+
+  function renderAdmin() {
+    const m = metrics(state);
+    el('metrics').innerHTML = `
+      <div class="metric"><div class="metric-num" style="color:var(--success-text)">${m.yes}</div><div class="metric-label">Confirmados</div></div>
+      <div class="metric"><div class="metric-num" style="color:var(--danger-text)">${m.no}</div><div class="metric-label">Não vão</div></div>
+      <div class="metric"><div class="metric-num">${m.pend}</div><div class="metric-label">Aguardando</div></div>
+      <div class="metric"><div class="metric-num">${m.total}</div><div class="metric-label">Total</div></div>`;
+
+    el('inp-event-title').value = state.eventTitle || '';
+    el('inp-event-date').value = state.eventDate || '';
+    el('inp-organizer-email').value = state.organizerEmail || '';
+
+    const fl = el('family-list');
+    fl.innerHTML = '';
+    state.families.forEach(f => {
+      const responded = familyResponded(f);
+      const cy = f.members.filter(m => m.status === 'yes').length;
+      const cn = f.members.filter(m => m.status === 'no').length;
+      const cp = f.members.filter(m => m.status !== 'yes' && m.status !== 'no').length;
+      const { full, tokenLen } = buildGuestUrl(state, f);
+      const long = tokenLen > 2400;
+      const card = document.createElement('div');
+      card.className = 'family-admin-card';
+      card.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+          <div>
+            <div style="font-size:14px;font-weight:500">${escapeHtml(f.name)}</div>
+            <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">Responsável: ${escapeHtml(f.responsible || '—')}</div>
+          </div>
+          <span class="badge ${responded ? 'badge-confirm' : 'badge-pending'}">${responded ? 'Respondido' : 'Aguardando'}</span>
+        </div>
+        <div class="link-box" data-copy="${escapeAttr(full)}">${escapeHtml(full)}</div>
+        ${long ? '<div class="warn" style="margin-top:8px">Link longo: se não abrir em alguns apps, use “Copiar” e envie por WhatsApp ou reduza nomes.</div>' : ''}
+        <div class="row-actions">
+          <button type="button" class="btn-secondary btn-copy" data-t="${escapeAttr(full)}">Copiar link</button>
+          <button type="button" class="btn-secondary btn-edit" data-id="${escapeAttr(f.id)}">Editar</button>
+          <button type="button" class="btn-secondary btn-del" data-id="${escapeAttr(f.id)}" style="color:var(--danger-text)">Excluir</button>
+        </div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-top:8px">
+          ${responded
+            ? `<span style="color:var(--success-text)">${cy} confirmados</span><span> · </span><span style="color:var(--danger-text)">${cn} não vão</span><span> · </span><span>${f.members.length} no total</span>`
+            : `${cp} aguardando resposta · ${f.members.length} no total`}
+        </div>`;
+      fl.appendChild(card);
+    });
+
+    fl.querySelectorAll('.btn-copy').forEach(b => {
+      b.addEventListener('click', () => copyText(b.getAttribute('data-t')));
+    });
+    fl.querySelectorAll('.btn-edit').forEach(b => {
+      b.addEventListener('click', () => editFamily(b.getAttribute('data-id')));
+    });
+    fl.querySelectorAll('.btn-del').forEach(b => {
+      b.addEventListener('click', () => {
+        if (!confirm('Excluir esta família?')) return;
+        state.families = state.families.filter(x => x.id !== b.getAttribute('data-id'));
+        saveState(state);
+        renderAdmin();
+      });
+    });
+
+    renderGuestList(document.querySelector('#filter-pills .pill.active')?.dataset.filter || 'all');
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function escapeAttr(s) {
+    return escapeHtml(s).replace(/'/g, '&#39;');
+  }
+
+  let listFilter = 'all';
+  function renderGuestList(filter) {
+    listFilter = filter || listFilter;
+    const box = el('guest-list');
+    const rows = [];
+    state.families.forEach(f => {
+      f.members.forEach(m => {
+        if (listFilter === 'yes' && m.status !== 'yes') return;
+        if (listFilter === 'no' && m.status !== 'no') return;
+        if (listFilter === 'pending' && (m.status === 'yes' || m.status === 'no')) return;
+        let badge = '<span class="badge badge-pending">Aguardando</span>';
+        if (m.status === 'yes') badge = '<span class="badge badge-confirm">Vai</span>';
+        if (m.status === 'no') badge = '<span class="badge badge-decline">Não vai</span>';
+        rows.push(`<div class="member-row">
+          <div><div class="member-name">${escapeHtml(m.name)}</div><div style="font-size:12px;color:var(--text-secondary)">${escapeHtml(f.name)}</div></div>
+          ${badge}
+        </div>`);
+      });
+    });
+    box.innerHTML = rows.length ? rows.join('') : '<div style="font-size:13px;color:var(--text-secondary)">Nenhum convidado neste filtro.</div>';
+  }
+
+  function copyText(t) {
+    navigator.clipboard.writeText(t).then(() => alert('Copiado.')).catch(() => {
+      prompt('Copie:', t);
+    });
+  }
+
+  function showView(name) {
+    el('view-admin').classList.toggle('hidden', name !== 'admin');
+    el('view-guest').classList.toggle('hidden', name !== 'guest');
+    el('view-success').classList.toggle('hidden', name !== 'success');
+  }
+
+  function editFamily(id) {
+    const f = state.families.find(x => x.id === id);
+    if (!f) return;
+    const name = prompt('Nome da família', f.name);
+    if (name === null) return;
+    const responsible = prompt('Responsável', f.responsible || '');
+    if (responsible === null) return;
+    const membersStr = prompt('Membros (um por linha)', f.members.map(m => m.name).join('\n'));
+    if (membersStr === null) return;
+    f.name = name.trim() || f.name;
+    f.responsible = responsible.trim();
+    const names = membersStr.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    const oldByName = new Map(f.members.map(m => [m.name, m]));
+    f.members = names.map(n => {
+      const old = oldByName.get(n);
+      if (old) return old;
+      return { id: uid(), name: n, status: 'pending' };
+    });
+    saveState(state);
+    renderAdmin();
+  }
+
+  function addFamily() {
+    const name = prompt('Nome da família (ex.: Família Silva)');
+    if (!name || !name.trim()) return;
+    const responsible = prompt('Nome do responsável') || '';
+    const membersStr = prompt('Membros (um por linha)', 'Pessoa 1\nPessoa 2');
+    if (membersStr === null) return;
+    const names = membersStr.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    if (!names.length) return;
+    const base = slugify(name);
+    const slug = base + '-' + uid().slice(0, 4);
+    state.families.push({
+      id: uid(),
+      slug,
+      name: name.trim(),
+      responsible: responsible.trim(),
+      members: names.map(n => ({ id: uid(), name: n, status: 'pending' })),
+      respondedAt: null
+    });
+    saveState(state);
+    renderAdmin();
+  }
+
+  function renderGuestView() {
+    guestPayload = parseHashGuest();
+    if (!guestPayload || guestPayload.v !== 1 || !guestPayload.members) {
+      showView('admin');
+      return;
+    }
+    guestChoices = {};
+    guestPayload.members.forEach(m => { guestChoices[m.id] = null; });
+
+    el('guest-event-line').textContent = [guestPayload.eventTitle, guestPayload.eventDate].filter(Boolean).join(' · ');
+    el('guest-family-name').textContent = guestPayload.familyName || 'Família';
+    const warn = el('guest-warn');
+    const { full, tokenLen } = (function () {
+      const fam = { slug: guestPayload.slug, name: guestPayload.familyName, responsible: guestPayload.responsible, members: guestPayload.members.map(m => ({ id: m.id, name: m.name })) };
+      return buildGuestUrl(state, fam);
+    })();
+    if (tokenLen > 2800) {
+      warn.textContent = 'Este link está no limite de tamanho. Se algo falhar, peça ao organizador um link novo (família menor ou nomes mais curtos).';
+      warn.classList.remove('hidden');
+    } else warn.classList.add('hidden');
+
+    const wrap = el('guest-members');
+    wrap.innerHTML = '';
+    guestPayload.members.forEach(m => {
+      const row = document.createElement('div');
+      row.className = 'member-row';
+      row.dataset.mid = m.id;
+      row.innerHTML = `
+        <span class="member-name">${escapeHtml(m.name)}</span>
+        <div class="btn-group">
+          <button type="button" class="btn-rsvp" data-yes>Vai</button>
+          <button type="button" class="btn-rsvp" data-no>Não vai</button>
+        </div>`;
+      row.querySelector('[data-yes]').addEventListener('click', function () {
+        row.querySelectorAll('.btn-rsvp').forEach(b => b.classList.remove('selected-yes', 'selected-no'));
+        this.classList.add('selected-yes');
+        guestChoices[m.id] = 'yes';
+        updateGuestSubmit();
+      });
+      row.querySelector('[data-no]').addEventListener('click', function () {
+        row.querySelectorAll('.btn-rsvp').forEach(b => b.classList.remove('selected-yes', 'selected-no'));
+        this.classList.add('selected-no');
+        guestChoices[m.id] = 'no';
+        updateGuestSubmit();
+      });
+      wrap.appendChild(row);
+    });
+    updateGuestSubmit();
+    showView('guest');
+  }
+
+  function updateGuestSubmit() {
+    const ok = guestPayload && guestPayload.members.every(m => guestChoices[m.id] === 'yes' || guestChoices[m.id] === 'no');
+    el('btn-guest-submit').disabled = !ok;
+  }
+
+  function mergeGuestIntoLocalState() {
+    const slug = guestPayload.slug;
+    const fam = state.families.find(f => f.slug === slug);
+    if (!fam) return;
+    guestPayload.members.forEach(gm => {
+      const m = fam.members.find(x => x.id === gm.id);
+      if (m) m.status = guestChoices[gm.id];
+    });
+    fam.respondedAt = new Date().toISOString();
+    saveState(state);
+  }
+
+  function submitGuest() {
+    const choices = guestPayload.members.map(m => ({ id: m.id, name: m.name, status: guestChoices[m.id] }));
+    const block = buildRsvpBlock(state, guestPayload.slug, guestPayload.familyName, choices);
+    el('success-block').textContent = block;
+    el('success-msg').textContent = 'Obrigado' + (guestPayload.responsible ? ', ' + guestPayload.responsible : '') + '. Envie o texto abaixo ao organizador (WhatsApp ou e-mail).';
+    let html = '';
+    choices.forEach(c => {
+      const badge = c.status === 'yes'
+        ? '<span class="badge badge-confirm">Vai</span>'
+        : '<span class="badge badge-decline">Não vai</span>';
+      html += `<div style="display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:0.5px solid var(--border)"><span>${escapeHtml(c.name)}</span>${badge}</div>`;
+    });
+    el('success-summary').innerHTML = html;
+
+    mergeGuestIntoLocalState();
+
+    const email = (state.organizerEmail || '').trim();
+    const mailBtn = el('btn-mailto');
+    if (email) {
+      const sub = encodeURIComponent('RSVP: ' + guestPayload.familyName);
+      const body = encodeURIComponent(block);
+      mailBtn.style.display = 'inline-block';
+      mailBtn.onclick = () => { window.location.href = 'mailto:' + email + '?subject=' + sub + '&body=' + body; };
+    } else {
+      mailBtn.style.display = 'none';
+    }
+
+    el('btn-copy-block').onclick = () => copyText(block);
+
+    window.location.hash = '';
+    showView('success');
+    renderAdmin();
+  }
+
+  // Tabs admin
+  document.querySelectorAll('.tab').forEach(t => {
+    t.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      const tab = t.dataset.tab;
+      el('tab-families').classList.toggle('hidden', tab !== 'families');
+      el('tab-list').classList.toggle('hidden', tab !== 'list');
+      el('tab-import').classList.toggle('hidden', tab !== 'import');
+    });
+  });
+
+  document.getElementById('filter-pills').addEventListener('click', (e) => {
+    const b = e.target.closest('.pill');
+    if (!b) return;
+    document.querySelectorAll('#filter-pills .pill').forEach(p => p.classList.remove('active'));
+    b.classList.add('active');
+    renderGuestList(b.dataset.filter);
+  });
+
+  el('btn-save-meta').addEventListener('click', () => {
+    state.eventTitle = el('inp-event-title').value.trim() || state.eventTitle;
+    state.eventDate = el('inp-event-date').value.trim();
+    state.organizerEmail = el('inp-organizer-email').value.trim();
+    saveState(state);
+    renderAdmin();
+    alert('Salvo.');
+  });
+
+  el('btn-add-family').addEventListener('click', addFamily);
+
+  el('btn-export').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'backup-convite-rsvp.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+  el('inp-import').addEventListener('change', (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => {
+      try {
+        const p = JSON.parse(r.result);
+        state = migrate(p);
+        saveState(state);
+        renderAdmin();
+        alert('Importado.');
+      } catch (_) {
+        alert('JSON inválido.');
+      }
+      e.target.value = '';
+    };
+    r.readAsText(f);
+  });
+
+  el('btn-import-rsvp').addEventListener('click', () => {
+    const text = el('import-text').value.trim();
+    if (!text) return;
+    try {
+      const r = applyRsvpBlock(state, text);
+      saveState(state);
+      renderAdmin();
+      alert('Importação aplicada: ' + r.famName + ' (' + r.changed + ' alterações).');
+      el('import-text').value = '';
+    } catch (err) {
+      alert(err.message || String(err));
+    }
+  });
+
+  el('btn-guest-submit').addEventListener('click', submitGuest);
+
+  window.addEventListener('hashchange', () => {
+    if (window.location.hash.startsWith('#rsvp=')) renderGuestView();
+  });
+
+  // init
+  if (window.location.hash.startsWith('#rsvp=')) {
+    renderGuestView();
+  } else {
+    renderAdmin();
+    showView('admin');
+  }
+})();
+</script>
+</body>
+</html>
