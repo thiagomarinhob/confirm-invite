@@ -151,7 +151,7 @@ function parseRsvpText(text) {
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '12mb' }));
 
 app.get('/api/settings', (_req, res) => {
   res.json(getSettings());
@@ -383,20 +383,31 @@ app.post('/api/rsvp-import', (req, res) => {
 app.get('/api/export', (_req, res) => {
   const settings = getSettings();
   const families = listFamilies();
-  res.json({
+  const exportedAt = new Date().toISOString();
+  const payload = {
     v: 1,
+    exportedAt,
     eventTitle: settings.eventTitle,
     eventDate: settings.eventDate,
     organizerEmail: settings.organizerEmail,
     families,
-  });
+  };
+  const day = exportedAt.slice(0, 10);
+  const filename = `backup-convite-rsvp-${day}.json`;
+  const body = JSON.stringify(payload, null, 2);
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
+  res.send(body);
 });
 
 app.post('/api/import-backup', (req, res) => {
   try {
     const data = req.body;
     if (!data || data.v !== 1 || !Array.isArray(data.families)) {
-      return res.status(400).json({ error: 'JSON inválido: esperado { v:1, families: [...] }' });
+      return res.status(400).json({
+        error:
+          'JSON inválido: esperado v: 1 e families (array). Use o arquivo gerado por "Exportar backup JSON" ou GET /api/export.',
+      });
     }
     const tx = db.transaction(() => {
       db.prepare('DELETE FROM family_members').run();

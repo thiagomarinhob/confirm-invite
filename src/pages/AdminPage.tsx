@@ -39,6 +39,31 @@ function publicRsvpUrl(slug: string) {
   return `${window.location.origin}/rsvp/${encodeURIComponent(slug)}`;
 }
 
+function filenameFromContentDisposition(header: string | null): string | null {
+  if (!header) return null;
+  const star = /filename\*=(?:UTF-8'')?([^;\n]+)/i.exec(header);
+  if (star) {
+    const raw = star[1].trim().replace(/^"(.*)"$/, '$1');
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
+  }
+  const plain = /filename="([^"]+)"/i.exec(header);
+  return plain ? plain[1] : null;
+}
+
+async function parseFetchError(res: Response): Promise<string> {
+  const t = await res.text();
+  try {
+    const j = JSON.parse(t) as { error?: string };
+    return j.error || t || res.statusText;
+  } catch {
+    return t || res.statusText;
+  }
+}
+
 interface FamilyModalProps {
   open: boolean;
   mode: 'add' | 'edit';
@@ -126,6 +151,7 @@ export function AdminPage() {
   const [listFilter, setListFilter] = useState<ListFilter>('all');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [importText, setImportText] = useState('');
+  const [exporting, setExporting] = useState(false);
   const [modal, setModal] = useState<{ mode: 'add' | 'edit'; family?: Family } | null>(null);
 
   const draft = useMemo(
@@ -175,20 +201,38 @@ export function AdminPage() {
   };
 
   const exportJson = async () => {
+    setExporting(true);
     try {
-      const data = await apiGet<unknown>('/export');
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const r = await fetch('/api/export');
+      if (!r.ok) throw new Error(await parseFetchError(r));
+      const blob = await r.blob();
+      const name =
+        filenameFromContentDisposition(r.headers.get('Content-Disposition')) ||
+        `backup-convite-rsvp-${new Date().toISOString().slice(0, 10)}.json`;
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'backup-convite-rsvp.json';
+      a.href = url;
+      a.download = name;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(a.href);
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 2500);
     } catch (e) {
       alert(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExporting(false);
     }
   };
 
   const importBackupFile = (file: File) => {
+    if (
+      !confirm(
+        'A importação substitui todas as famílias, membros e configurações do evento neste servidor pelo conteúdo do arquivo. Deseja continuar?'
+      )
+    ) {
+      return;
+    }
     const r = new FileReader();
     r.onload = () => {
       void (async () => {
@@ -196,7 +240,7 @@ export function AdminPage() {
           const data = JSON.parse(String(r.result));
           await apiPost('/import-backup', data);
           await refresh();
-          alert('Importado.');
+          alert('Importado com sucesso.');
         } catch (e) {
           alert(e instanceof Error ? e.message : String(e));
         }
@@ -316,14 +360,17 @@ export function AdminPage() {
           <button type="button" className="btn-secondary" onClick={() => void saveMeta()}>
             Salvar dados do evento
           </button>
-          <button type="button" className="btn-secondary" onClick={() => void exportJson()}>
-            Exportar backup JSON
+          <button type="button" className="btn-secondary" onClick={() => void exportJson()} disabled={exporting}>
+            {exporting ? 'Gerando backup…' : 'Exportar backup JSON'}
           </button>
+          <a className="btn-secondary" href="/api/export" style={{ textDecoration: 'none', display: 'inline-block' }}>
+            Abrir download direto
+          </a>
           <label className="btn-secondary" style={{ cursor: 'pointer', margin: 0 }}>
             Importar backup
             <input
               type="file"
-              accept="application/json"
+              accept="application/json,.json"
               className="hidden"
               style={{ display: 'none' }}
               onChange={(e) => {
@@ -334,6 +381,9 @@ export function AdminPage() {
             />
           </label>
         </div>
+        <p className="hint" style={{ marginTop: 10, marginBottom: 0 }}>
+          Backup inclui configuração do evento, famílias, membros e status de RSVP. No ambiente Vercel (SQLite em <code>/tmp</code>), use <strong>Importar backup</strong> após o deploy para restaurar os mesmos dados; a importação substitui tudo o que estiver no servidor.
+        </p>
       </div>
 
       <div className="metrics-row">
@@ -461,6 +511,32 @@ export function AdminPage() {
 
       {tab === 'import' && (
         <div>
+          <div className="card" style={{ marginBottom: '1rem' }}>
+            <p className="section-sub" style={{ marginTop: 0 }}>
+              <strong>Migração completa (JSON)</strong> — exporte no computador local e importe no site publicado.
+            </p>
+            <div className="row-actions">
+              <button type="button" className="btn-secondary" onClick={() => void exportJson()} disabled={exporting}>
+                {exporting ? 'Gerando backup…' : 'Exportar backup JSON'}
+              </button>
+              <a className="btn-secondary" href="/api/export" style={{ textDecoration: 'none', display: 'inline-block' }}>
+                Download direto
+              </a>
+              <label className="btn-secondary" style={{ cursor: 'pointer', margin: 0 }}>
+                Importar backup JSON
+                <input
+                  type="file"
+                  accept="application/json,.json"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) importBackupFile(f);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+            </div>
+          </div>
           <p className="section-sub" style={{ marginTop: 0 }}>
             Cole o bloco de texto RSVP_V1 (útil para migrar respostas do protótipo antigo ou correções manuais). Quem confirma pelo link público já grava direto no
             servidor.
