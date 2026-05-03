@@ -1,12 +1,22 @@
 import express from 'express';
 import cors from 'cors';
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DATA_PATH = join(__dirname, 'data', 'rsvp.json');
+
+/** Caminho do JSON: mesmo com bundling na Vercel, cwd costuma ser a raiz do projeto. */
+function resolveDataPath() {
+  const nextToApp = join(__dirname, 'data', 'rsvp.json');
+  const fromRepoRoot = join(process.cwd(), 'server', 'data', 'rsvp.json');
+  if (existsSync(nextToApp)) return nextToApp;
+  if (existsSync(fromRepoRoot)) return fromRepoRoot;
+  return nextToApp;
+}
+
+const DATA_PATH = resolveDataPath();
 /** Na Vercel o pacote é só leitura: alterações vão no Git (server/data/rsvp.json). */
 const READONLY = process.env.VERCEL === '1';
 
