@@ -3,6 +3,7 @@ dist
 .DS_Store
 *.log
 
-# SQLite em WAL: o que importa no deploy é só rsvp.sqlite após `npm run db:checkpoint`
+# Dados em produção: server/data/rsvp.json (versionado). SQLite legado local:
+server/data/*.sqlite
 server/data/*.sqlite-wal
 server/data/*.sqlite-shm

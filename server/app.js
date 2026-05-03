@@ -1,79 +1,79 @@
 import express from 'express';
 import cors from 'cors';
-import Database from 'better-sqlite3';
-import { mkdirSync, existsSync, copyFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const bundledDb = join(__dirname, 'data', 'rsvp.sqlite');
+const DATA_PATH = join(__dirname, 'data', 'rsvp.json');
+/** Na Vercel o pacote é só leitura: alterações vão no Git (server/data/rsvp.json). */
+const READONLY = process.env.VERCEL === '1';
 
-function resolveDbPath() {
-  if (process.env.VERCEL === '1') {
-    const dir = join('/tmp', 'convite-thales');
-    mkdirSync(dir, { recursive: true });
-    const tmpDb = join(dir, 'rsvp.sqlite');
-    if (!existsSync(tmpDb) && existsSync(bundledDb)) {
-      copyFileSync(bundledDb, tmpDb);
-    }
-    return tmpDb;
+function loadStore() {
+  const raw = readFileSync(DATA_PATH, 'utf8');
+  const data = JSON.parse(raw);
+  if (data.v !== 1 || !Array.isArray(data.families)) {
+    throw new Error('rsvp.json inválido: esperado v: 1 e families (array).');
   }
-  const dataDir = join(__dirname, 'data');
-  mkdirSync(dataDir, { recursive: true });
-  return join(dataDir, 'rsvp.sqlite');
+  return {
+    eventTitle: String(data.eventTitle ?? 'Aniversário').trim() || 'Aniversário',
+    eventDate: String(data.eventDate ?? '').trim(),
+    organizerEmail: String(data.organizerEmail ?? '').trim(),
+    families: data.families.map((f) => ({
+      id: String(f.id),
+      slug: String(f.slug),
+      name: String(f.name ?? ''),
+      responsible: String(f.responsible || ''),
+      respondedAt: f.respondedAt != null ? String(f.respondedAt) : null,
+      rsvpNote: String(f.rsvpNote || ''),
+      members: (f.members || []).map((m, i) => ({
+        id: String(m.id),
+        name: String(m.name ?? ''),
+        sortOrder: typeof m.sortOrder === 'number' ? m.sortOrder : i,
+        status: m.status === 'yes' || m.status === 'no' ? m.status : 'pending',
+      })),
+    })),
+  };
 }
 
-const DB_PATH = resolveDbPath();
-const db = new Database(DB_PATH);
-/** WAL em /tmp (serverless) costuma gerar contenção e travamentos longos; DELETE é mais previsível na Vercel. */
-if (process.env.VERCEL === '1') {
-  db.pragma('journal_mode = DELETE');
-} else {
-  db.pragma('journal_mode = WAL');
-}
-db.pragma('busy_timeout = 8000');
-
-function initSchema() {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS settings (
-      id INTEGER PRIMARY KEY CHECK (id = 1),
-      event_title TEXT NOT NULL DEFAULT 'Aniversário',
-      event_date TEXT NOT NULL DEFAULT '',
-      organizer_email TEXT NOT NULL DEFAULT ''
-    );
-    CREATE TABLE IF NOT EXISTS families (
-      id TEXT PRIMARY KEY,
-      slug TEXT UNIQUE NOT NULL,
-      name TEXT NOT NULL,
-      responsible TEXT NOT NULL DEFAULT '',
-      responded_at TEXT
-    );
-    CREATE TABLE IF NOT EXISTS family_members (
-      id TEXT PRIMARY KEY,
-      family_id TEXT NOT NULL REFERENCES families(id) ON DELETE CASCADE,
-      name TEXT NOT NULL,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'yes', 'no'))
-    );
-    CREATE INDEX IF NOT EXISTS idx_members_family ON family_members(family_id);
-  `);
-  const row = db.prepare('SELECT COUNT(*) as c FROM settings WHERE id = 1').get();
-  if (row.c === 0) {
-    db.prepare('INSERT INTO settings (id) VALUES (1)').run();
+function saveStore(store) {
+  if (READONLY) {
+    const e = new Error('READONLY');
+    e.code = 'READONLY';
+    throw e;
   }
+  const payload = {
+    v: 1,
+    exportedAt: new Date().toISOString(),
+    eventTitle: store.eventTitle,
+    eventDate: store.eventDate,
+    organizerEmail: store.organizerEmail,
+    families: store.families.map((f) => ({
+      id: f.id,
+      slug: f.slug,
+      name: f.name,
+      responsible: f.responsible,
+      respondedAt: f.respondedAt,
+      rsvpNote: f.rsvpNote,
+      members: [...f.members]
+        .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'pt'))
+        .map((m) => ({
+          id: m.id,
+          name: m.name,
+          status: m.status,
+        })),
+    })),
+  };
+  writeFileSync(DATA_PATH, JSON.stringify(payload, null, 2), 'utf8');
 }
 
-initSchema();
-
-function migrateSchema() {
-  const cols = db.prepare('PRAGMA table_info(families)').all();
-  if (!cols.some((c) => c.name === 'rsvp_note')) {
-    db.exec(`ALTER TABLE families ADD COLUMN rsvp_note TEXT NOT NULL DEFAULT ''`);
-  }
+function readonlyMessage() {
+  return {
+    error:
+      'Neste deploy os dados são só leitura (JSON versionado no Git). Para alterar configurações, famílias ou RSVPs, edite server/data/rsvp.json no repositório, faça commit e redeploy. Em desenvolvimento local (npm run dev) as alterações pela admin gravam no ficheiro.',
+  };
 }
-
-migrateSchema();
 
 function slugify(s) {
   return String(s || '')
@@ -84,27 +84,34 @@ function slugify(s) {
     .replace(/^-|-$/g, '') || 'familia';
 }
 
-function getSettings() {
-  return db.prepare('SELECT event_title as eventTitle, event_date as eventDate, organizer_email as organizerEmail FROM settings WHERE id = 1').get();
+function getSettings(store) {
+  return {
+    eventTitle: store.eventTitle,
+    eventDate: store.eventDate,
+    organizerEmail: store.organizerEmail,
+  };
 }
 
-function setSettings({ eventTitle, eventDate, organizerEmail }) {
-  db.prepare(
-    `UPDATE settings SET event_title = ?, event_date = ?, organizer_email = ? WHERE id = 1`
-  ).run(eventTitle ?? 'Aniversário', eventDate ?? '', organizerEmail ?? '');
+function setSettings(store, { eventTitle, eventDate, organizerEmail }) {
+  store.eventTitle = String(eventTitle ?? '').trim() || 'Aniversário';
+  store.eventDate = String(eventDate ?? '').trim();
+  store.organizerEmail = String(organizerEmail ?? '').trim();
 }
 
-function listFamilies() {
-  const families = db
-    .prepare('SELECT id, slug, name, responsible, responded_at as respondedAt, rsvp_note as rsvpNote FROM families ORDER BY name')
-    .all();
-  const membersStmt = db.prepare(
-    'SELECT id, name, status FROM family_members WHERE family_id = ? ORDER BY sort_order, name'
-  );
-  return families.map((f) => ({
-    ...f,
-    members: membersStmt.all(f.id),
-  }));
+function listFamilies(store) {
+  return [...store.families]
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt'))
+    .map((f) => ({
+      id: f.id,
+      slug: f.slug,
+      name: f.name,
+      responsible: f.responsible,
+      respondedAt: f.respondedAt,
+      rsvpNote: f.rsvpNote,
+      members: [...f.members]
+        .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'pt'))
+        .map((m) => ({ id: m.id, name: m.name, status: m.status })),
+    }));
 }
 
 function buildRsvpBlock({ slug, familyName, choices, eventTitle, message }) {
@@ -160,28 +167,40 @@ app.use(cors());
 app.use(express.json({ limit: '12mb' }));
 
 app.get('/api/settings', (_req, res) => {
-  res.json(getSettings());
+  try {
+    res.json(getSettings(loadStore()));
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
 });
 
 app.put('/api/settings', (req, res) => {
+  if (READONLY) return res.status(503).json(readonlyMessage());
   try {
+    const store = loadStore();
     const { eventTitle, eventDate, organizerEmail } = req.body || {};
-    setSettings({
+    setSettings(store, {
       eventTitle: String(eventTitle ?? '').trim() || 'Aniversário',
       eventDate: String(eventDate ?? '').trim(),
       organizerEmail: String(organizerEmail ?? '').trim(),
     });
-    res.json(getSettings());
+    saveStore(store);
+    res.json(getSettings(store));
   } catch (e) {
     res.status(400).json({ error: String(e.message || e) });
   }
 });
 
 app.get('/api/families', (_req, res) => {
-  res.json(listFamilies());
+  try {
+    res.json(listFamilies(loadStore()));
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
 });
 
 app.post('/api/families', (req, res) => {
+  if (READONLY) return res.status(503).json(readonlyMessage());
   try {
     const { name, responsible, memberNames } = req.body || {};
     const n = String(name || '').trim();
@@ -194,39 +213,41 @@ app.post('/api/families', (req, res) => {
           .filter(Boolean);
     if (!names.length) return res.status(400).json({ error: 'Informe ao menos um membro.' });
 
+    const store = loadStore();
     const id = randomUUID();
-    const slug = slugify(n) + '-' + randomUUID().slice(0, 4);
-    const tx = db.transaction(() => {
-      db.prepare('INSERT INTO families (id, slug, name, responsible) VALUES (?,?,?,?)').run(
-        id,
-        slug,
-        n,
-        String(responsible || '').trim()
-      );
-      const ins = db.prepare(
-        'INSERT INTO family_members (id, family_id, name, sort_order, status) VALUES (?,?,?,?,?)'
-      );
-      names.forEach((memName, i) => {
-        ins.run(randomUUID(), id, memName, i, 'pending');
-      });
-    });
-    tx();
-    const families = listFamilies();
-    const created = families.find((f) => f.id === id);
-    res.status(201).json(created);
-  } catch (e) {
-    if (String(e.message || '').includes('UNIQUE')) {
+    let slug = slugify(n) + '-' + randomUUID().slice(0, 4);
+    if (store.families.some((f) => f.slug === slug)) {
       return res.status(409).json({ error: 'Slug em conflito; tente de novo.' });
     }
+    store.families.push({
+      id,
+      slug,
+      name: n,
+      responsible: String(responsible || '').trim(),
+      respondedAt: null,
+      rsvpNote: '',
+      members: names.map((memName, i) => ({
+        id: randomUUID(),
+        name: memName,
+        sortOrder: i,
+        status: 'pending',
+      })),
+    });
+    saveStore(store);
+    const created = listFamilies(store).find((f) => f.id === id);
+    res.status(201).json(created);
+  } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }
 });
 
 app.patch('/api/families/:id', (req, res) => {
+  if (READONLY) return res.status(503).json(readonlyMessage());
   try {
     const { id } = req.params;
-    const row = db.prepare('SELECT id FROM families WHERE id = ?').get(id);
-    if (!row) return res.status(404).json({ error: 'Família não encontrada.' });
+    const store = loadStore();
+    const fam = store.families.find((f) => f.id === id);
+    if (!fam) return res.status(404).json({ error: 'Família não encontrada.' });
 
     const { name, responsible, members } = req.body || {};
     const n = name !== undefined ? String(name).trim() : null;
@@ -236,63 +257,71 @@ app.patch('/api/families/:id', (req, res) => {
       return res.status(400).json({ error: 'Informe ao menos um membro.' });
     }
 
-    const tx = db.transaction(() => {
-      if (n !== null && n !== '') {
-        db.prepare('UPDATE families SET name = ? WHERE id = ?').run(n, id);
-      }
-      if (r !== null) {
-        db.prepare('UPDATE families SET responsible = ? WHERE id = ?').run(r, id);
-      }
-      if (Array.isArray(members)) {
-        const existing = db.prepare('SELECT id, status FROM family_members WHERE family_id = ?').all(id);
-        const existingById = new Map(existing.map((m) => [m.id, m.status]));
-        db.prepare('DELETE FROM family_members WHERE family_id = ?').run(id);
-        const ins = db.prepare(
-          'INSERT INTO family_members (id, family_id, name, sort_order, status) VALUES (?,?,?,?,?)'
-        );
-        members.forEach((m, i) => {
-          const memName = String(m.name || '').trim();
-          if (!memName) return;
-          const mid = String(m.id || '').trim() || randomUUID();
-          const st = existingById.has(mid) ? existingById.get(mid) : 'pending';
-          ins.run(mid, id, memName, i, st);
+    if (n !== null && n !== '') fam.name = n;
+    if (r !== null) fam.responsible = r;
+
+    if (Array.isArray(members)) {
+      const existingById = new Map(fam.members.map((m) => [m.id, m.status]));
+      fam.members = [];
+      members.forEach((m, i) => {
+        const memName = String(m.name || '').trim();
+        if (!memName) return;
+        const mid = String(m.id || '').trim() || randomUUID();
+        const st = existingById.has(mid) ? existingById.get(mid) : 'pending';
+        fam.members.push({
+          id: mid,
+          name: memName,
+          sortOrder: i,
+          status: st,
         });
-        db.prepare('UPDATE families SET responded_at = NULL WHERE id = ?').run(id);
-      }
-    });
-    tx();
-    const families = listFamilies();
-    res.json(families.find((f) => f.id === id));
+      });
+      fam.respondedAt = null;
+    }
+    saveStore(store);
+    res.json(listFamilies(store).find((f) => f.id === id));
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }
 });
 
 app.delete('/api/families/:id', (req, res) => {
-  const { id } = req.params;
-  const r = db.prepare('DELETE FROM families WHERE id = ?').run(id);
-  if (r.changes === 0) return res.status(404).json({ error: 'Não encontrado.' });
-  res.status(204).end();
+  if (READONLY) return res.status(503).json(readonlyMessage());
+  try {
+    const { id } = req.params;
+    const store = loadStore();
+    const i = store.families.findIndex((f) => f.id === id);
+    if (i === -1) return res.status(404).json({ error: 'Não encontrado.' });
+    store.families.splice(i, 1);
+    saveStore(store);
+    res.status(204).end();
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
 });
 
 app.get('/api/public/families/:slug', (req, res) => {
-  const { slug } = req.params;
-  const fam = db.prepare('SELECT slug, name, responsible FROM families WHERE slug = ?').get(slug);
-  if (!fam) return res.status(404).json({ error: 'Link inválido ou família não encontrada.' });
-  const settings = getSettings();
-  const members = db
-    .prepare('SELECT id, name, status FROM family_members WHERE family_id = (SELECT id FROM families WHERE slug = ?) ORDER BY sort_order, name')
-    .all(slug);
-  res.json({
-    eventTitle: settings.eventTitle,
-    eventDate: settings.eventDate,
-    organizerEmail: settings.organizerEmail,
-    family: fam,
-    members,
-  });
+  try {
+    const { slug } = req.params;
+    const store = loadStore();
+    const fam = store.families.find((f) => f.slug === slug);
+    if (!fam) return res.status(404).json({ error: 'Link inválido ou família não encontrada.' });
+    const members = [...fam.members]
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'pt'))
+      .map((m) => ({ id: m.id, name: m.name, status: m.status }));
+    res.json({
+      eventTitle: store.eventTitle,
+      eventDate: store.eventDate,
+      organizerEmail: store.organizerEmail,
+      family: { slug: fam.slug, name: fam.name, responsible: fam.responsible },
+      members,
+    });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
 });
 
 app.post('/api/public/families/:slug/rsvp', (req, res) => {
+  if (READONLY) return res.status(503).json(readonlyMessage());
   try {
     const { slug } = req.params;
     const { responses, message, justification } = req.body || {};
@@ -307,36 +336,26 @@ app.post('/api/public/families/:slug/rsvp', (req, res) => {
             .replace(/\s+/g, ' ')
             .slice(0, 2000)
         : '';
-    const fam = db
-      .prepare('SELECT id, slug, name FROM families WHERE slug = ?')
-      .get(slug);
+
+    const store = loadStore();
+    const fam = store.families.find((f) => f.slug === slug);
     if (!fam) return res.status(404).json({ error: 'Família não encontrada.' });
 
-    const members = db
-      .prepare('SELECT id, name FROM family_members WHERE family_id = ?')
-      .all(fam.id);
-    for (const m of members) {
+    for (const m of fam.members) {
       const st = responses[m.id];
       if (st !== 'yes' && st !== 'no') {
         return res.status(400).json({ error: 'Resposta obrigatória (yes/no) para: ' + m.name });
       }
     }
 
-    const settings = getSettings();
-    const tx = db.transaction(() => {
-      const upd = db.prepare('UPDATE family_members SET status = ? WHERE id = ? AND family_id = ?');
-      for (const m of members) {
-        upd.run(responses[m.id], m.id, fam.id);
-      }
-      db.prepare('UPDATE families SET responded_at = ?, rsvp_note = ? WHERE id = ?').run(
-        new Date().toISOString(),
-        note,
-        fam.id
-      );
-    });
-    tx();
+    for (const m of fam.members) {
+      m.status = responses[m.id];
+    }
+    fam.respondedAt = new Date().toISOString();
+    fam.rsvpNote = note;
+    saveStore(store);
 
-    const choices = members.map((m) => ({
+    const choices = fam.members.map((m) => ({
       id: m.id,
       name: m.name,
       status: responses[m.id],
@@ -345,13 +364,13 @@ app.post('/api/public/families/:slug/rsvp', (req, res) => {
       slug: fam.slug,
       familyName: fam.name,
       choices,
-      eventTitle: settings.eventTitle,
+      eventTitle: store.eventTitle,
       message: note,
     });
     res.json({
       block,
       familyName: fam.name,
-      responsible: db.prepare('SELECT responsible FROM families WHERE id = ?').get(fam.id).responsible,
+      responsible: fam.responsible,
     });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
@@ -359,27 +378,22 @@ app.post('/api/public/families/:slug/rsvp', (req, res) => {
 });
 
 app.post('/api/rsvp-import', (req, res) => {
+  if (READONLY) return res.status(503).json(readonlyMessage());
   try {
     const text = String((req.body || {}).text || '').trim();
     if (!text) return res.status(400).json({ error: 'Texto vazio.' });
     const { slug, famName, map } = parseRsvpText(text);
-    const fam = db.prepare('SELECT id, name FROM families WHERE slug = ?').get(slug);
+    const store = loadStore();
+    const fam = store.families.find((f) => f.slug === slug);
     if (!fam) return res.status(400).json({ error: 'Nenhuma família cadastrada com o slug: ' + slug });
 
-    const mems = db.prepare('SELECT id FROM family_members WHERE family_id = ?').all(fam.id);
     let changed = 0;
-    const tx = db.transaction(() => {
-      const upd = db.prepare('UPDATE family_members SET status = ? WHERE id = ? AND family_id = ?');
-      for (const m of mems) {
-        if (map[m.id] !== undefined) {
-          const cur = db.prepare('SELECT status FROM family_members WHERE id = ?').get(m.id);
-          if (cur && cur.status !== map[m.id]) changed++;
-          upd.run(map[m.id], m.id, fam.id);
-        }
-      }
-      db.prepare('UPDATE families SET responded_at = ? WHERE id = ?').run(new Date().toISOString(), fam.id);
-    });
-    tx();
+    for (const m of fam.members) {
+      if (map[m.id] !== undefined && m.status !== map[m.id]) changed++;
+      if (map[m.id] !== undefined) m.status = map[m.id];
+    }
+    fam.respondedAt = new Date().toISOString();
+    saveStore(store);
     res.json({ changed, famName: famName || fam.name });
   } catch (e) {
     res.status(400).json({ error: String(e.message || e) });
@@ -387,29 +401,33 @@ app.post('/api/rsvp-import', (req, res) => {
 });
 
 app.get('/api/export', (_req, res) => {
-  const settings = getSettings();
-  const families = listFamilies();
-  const exportedAt = new Date().toISOString();
-  const payload = {
-    v: 1,
-    exportedAt,
-    eventTitle: settings.eventTitle,
-    eventDate: settings.eventDate,
-    organizerEmail: settings.organizerEmail,
-    families,
-  };
-  const day = exportedAt.slice(0, 10);
-  const filename = `backup-convite-rsvp-${day}.json`;
-  const body = JSON.stringify(payload, null, 2);
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
-  res.send(body);
+  try {
+    const store = loadStore();
+    const exportedAt = new Date().toISOString();
+    const payload = {
+      v: 1,
+      exportedAt,
+      eventTitle: store.eventTitle,
+      eventDate: store.eventDate,
+      organizerEmail: store.organizerEmail,
+      families: listFamilies(store),
+    };
+    const day = exportedAt.slice(0, 10);
+    const filename = `backup-convite-rsvp-${day}.json`;
+    const body = JSON.stringify(payload, null, 2);
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.send(body);
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
 });
 
 const MAX_BACKUP_FAMILIES = 8000;
 const MAX_BACKUP_MEMBERS_PER_FAMILY = 400;
 
 app.post('/api/import-backup', (req, res) => {
+  if (READONLY) return res.status(503).json(readonlyMessage());
   const started = Date.now();
   try {
     const data = req.body;
@@ -434,43 +452,27 @@ app.post('/api/import-backup', (req, res) => {
       }
     }
 
-    const runImport = db.transaction(() => {
-      db.prepare('DELETE FROM family_members').run();
-      db.prepare('DELETE FROM families').run();
-      setSettings({
-        eventTitle: data.eventTitle,
-        eventDate: data.eventDate,
-        organizerEmail: data.organizerEmail,
-      });
-      const insF = db.prepare(
-        'INSERT INTO families (id, slug, name, responsible, responded_at, rsvp_note) VALUES (?,?,?,?,?,?)'
-      );
-      const insM = db.prepare(
-        'INSERT INTO family_members (id, family_id, name, sort_order, status) VALUES (?,?,?,?,?)'
-      );
-      for (const f of data.families) {
-        insF.run(
-          String(f.id),
-          String(f.slug),
-          String(f.name ?? ''),
-          String(f.responsible || ''),
-          f.respondedAt || null,
-          String(f.rsvpNote || '')
-        );
-        (f.members || []).forEach((m, i) => {
-          insM.run(
-            String(m.id),
-            String(f.id),
-            String(m.name ?? ''),
-            i,
-            m.status === 'yes' || m.status === 'no' ? m.status : 'pending'
-          );
-        });
-      }
-    });
-    /** BEGIN IMMEDIATE evita espera indefinida por lock em escrita. */
-    runImport.immediate();
-    const familyCount = db.prepare('SELECT COUNT(*) AS c FROM families').get().c;
+    const store = {
+      eventTitle: String(data.eventTitle ?? 'Aniversário').trim() || 'Aniversário',
+      eventDate: String(data.eventDate ?? '').trim(),
+      organizerEmail: String(data.organizerEmail ?? '').trim(),
+      families: data.families.map((f) => ({
+        id: String(f.id),
+        slug: String(f.slug),
+        name: String(f.name ?? ''),
+        responsible: String(f.responsible || ''),
+        respondedAt: f.respondedAt != null ? String(f.respondedAt) : null,
+        rsvpNote: String(f.rsvpNote || ''),
+        members: (f.members || []).map((m, i) => ({
+          id: String(m.id),
+          name: String(m.name ?? ''),
+          sortOrder: i,
+          status: m.status === 'yes' || m.status === 'no' ? m.status : 'pending',
+        })),
+      })),
+    };
+    saveStore(store);
+    const familyCount = store.families.length;
     console.log('[import-backup] ok', { ms: Date.now() - started, familyCount });
     res.json({ ok: true, families: familyCount });
   } catch (e) {

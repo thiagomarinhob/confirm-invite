@@ -9,11 +9,9 @@
     "dev:server": "node server/index.js",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "start": "NODE_ENV=production node server/index.js",
-    "db:checkpoint": "node scripts/sqlite-checkpoint.mjs"
+    "start": "NODE_ENV=production node server/index.js"
   },
   "dependencies": {
-    "better-sqlite3": "^11.8.1",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "react": "^19.0.0",
