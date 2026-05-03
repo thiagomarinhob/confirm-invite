@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import { Redis } from '@upstash/redis';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -7,7 +8,16 @@ import { randomUUID } from 'crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-/** Caminho do JSON: mesmo com bundling na Vercel, cwd costuma ser a raiz do projeto. */
+const USE_REDIS = !!(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
+const redis = USE_REDIS
+  ? new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+    })
+  : null;
+
+const REDIS_KEY = 'rsvp:data';
+
 function resolveDataPath() {
   const nextToApp = join(__dirname, 'data', 'rsvp.json');
   const fromRepoRoot = join(process.cwd(), 'server', 'data', 'rsvp.json');
@@ -17,14 +27,10 @@ function resolveDataPath() {
 }
 
 const DATA_PATH = resolveDataPath();
-/** Na Vercel o pacote é só leitura: alterações vão no Git (server/data/rsvp.json). */
-const READONLY = process.env.VERCEL === '1';
 
-function loadStore() {
-  const raw = readFileSync(DATA_PATH, 'utf8');
-  const data = JSON.parse(raw);
+function parseStore(data) {
   if (data.v !== 1 || !Array.isArray(data.families)) {
-    throw new Error('rsvp.json inválido: esperado v: 1 e families (array).');
+    throw new Error('Dados inválidos: esperado v: 1 e families (array).');
   }
   return {
     eventTitle: String(data.eventTitle ?? 'Aniversário').trim() || 'Aniversário',
@@ -47,12 +53,19 @@ function loadStore() {
   };
 }
 
-function saveStore(store) {
-  if (READONLY) {
-    const e = new Error('READONLY');
-    e.code = 'READONLY';
-    throw e;
+async function loadStore() {
+  if (USE_REDIS) {
+    const data = await redis.get(REDIS_KEY);
+    if (!data) {
+      return { eventTitle: 'Aniversário', eventDate: '', organizerEmail: '', families: [] };
+    }
+    return parseStore(data);
   }
+  const raw = readFileSync(DATA_PATH, 'utf8');
+  return parseStore(JSON.parse(raw));
+}
+
+async function saveStore(store) {
   const payload = {
     v: 1,
     exportedAt: new Date().toISOString(),
@@ -68,30 +81,25 @@ function saveStore(store) {
       rsvpNote: f.rsvpNote,
       members: [...f.members]
         .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'pt'))
-        .map((m) => ({
-          id: m.id,
-          name: m.name,
-          status: m.status,
-        })),
+        .map((m) => ({ id: m.id, name: m.name, status: m.status })),
     })),
   };
-  writeFileSync(DATA_PATH, JSON.stringify(payload, null, 2), 'utf8');
-}
-
-function readonlyMessage() {
-  return {
-    error:
-      'Neste deploy os dados são só leitura (JSON versionado no Git). Para alterar configurações, famílias ou RSVPs, edite server/data/rsvp.json no repositório, faça commit e redeploy. Em desenvolvimento local (npm run dev) as alterações pela admin gravam no ficheiro.',
-  };
+  if (USE_REDIS) {
+    await redis.set(REDIS_KEY, payload);
+  } else {
+    writeFileSync(DATA_PATH, JSON.stringify(payload, null, 2), 'utf8');
+  }
 }
 
 function slugify(s) {
-  return String(s || '')
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '') || 'familia';
+  return (
+    String(s || '')
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '') || 'familia'
+  );
 }
 
 function getSettings(store) {
@@ -137,10 +145,7 @@ function buildRsvpBlock({ slug, familyName, choices, eventTitle, message }) {
     lines.push(c.id + ':' + (c.status === 'yes' ? 'SIM' : 'NAO'));
   }
   if (message && String(message).trim()) {
-    const rec = String(message)
-      .trim()
-      .replace(/\s+/g, ' ')
-      .slice(0, 2000);
+    const rec = String(message).trim().replace(/\s+/g, ' ').slice(0, 2000);
     lines.push('RECADO:' + rec);
   }
   lines.push('---FIM---');
@@ -176,41 +181,39 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '12mb' }));
 
-app.get('/api/settings', (_req, res) => {
+app.get('/api/settings', async (_req, res) => {
   try {
-    res.json(getSettings(loadStore()));
+    res.json(getSettings(await loadStore()));
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }
 });
 
-app.put('/api/settings', (req, res) => {
-  if (READONLY) return res.status(503).json(readonlyMessage());
+app.put('/api/settings', async (req, res) => {
   try {
-    const store = loadStore();
+    const store = await loadStore();
     const { eventTitle, eventDate, organizerEmail } = req.body || {};
     setSettings(store, {
       eventTitle: String(eventTitle ?? '').trim() || 'Aniversário',
       eventDate: String(eventDate ?? '').trim(),
       organizerEmail: String(organizerEmail ?? '').trim(),
     });
-    saveStore(store);
+    await saveStore(store);
     res.json(getSettings(store));
   } catch (e) {
     res.status(400).json({ error: String(e.message || e) });
   }
 });
 
-app.get('/api/families', (_req, res) => {
+app.get('/api/families', async (_req, res) => {
   try {
-    res.json(listFamilies(loadStore()));
+    res.json(listFamilies(await loadStore()));
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }
 });
 
-app.post('/api/families', (req, res) => {
-  if (READONLY) return res.status(503).json(readonlyMessage());
+app.post('/api/families', async (req, res) => {
   try {
     const { name, responsible, memberNames } = req.body || {};
     const n = String(name || '').trim();
@@ -223,9 +226,9 @@ app.post('/api/families', (req, res) => {
           .filter(Boolean);
     if (!names.length) return res.status(400).json({ error: 'Informe ao menos um membro.' });
 
-    const store = loadStore();
+    const store = await loadStore();
     const id = randomUUID();
-    let slug = slugify(n) + '-' + randomUUID().slice(0, 4);
+    const slug = slugify(n) + '-' + randomUUID().slice(0, 4);
     if (store.families.some((f) => f.slug === slug)) {
       return res.status(409).json({ error: 'Slug em conflito; tente de novo.' });
     }
@@ -243,7 +246,7 @@ app.post('/api/families', (req, res) => {
         status: 'pending',
       })),
     });
-    saveStore(store);
+    await saveStore(store);
     const created = listFamilies(store).find((f) => f.id === id);
     res.status(201).json(created);
   } catch (e) {
@@ -251,11 +254,10 @@ app.post('/api/families', (req, res) => {
   }
 });
 
-app.patch('/api/families/:id', (req, res) => {
-  if (READONLY) return res.status(503).json(readonlyMessage());
+app.patch('/api/families/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const store = loadStore();
+    const store = await loadStore();
     const fam = store.families.find((f) => f.id === id);
     if (!fam) return res.status(404).json({ error: 'Família não encontrada.' });
 
@@ -278,41 +280,35 @@ app.patch('/api/families/:id', (req, res) => {
         if (!memName) return;
         const mid = String(m.id || '').trim() || randomUUID();
         const st = existingById.has(mid) ? existingById.get(mid) : 'pending';
-        fam.members.push({
-          id: mid,
-          name: memName,
-          sortOrder: i,
-          status: st,
-        });
+        fam.members.push({ id: mid, name: memName, sortOrder: i, status: st });
       });
       fam.respondedAt = null;
     }
-    saveStore(store);
+    await saveStore(store);
     res.json(listFamilies(store).find((f) => f.id === id));
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }
 });
 
-app.delete('/api/families/:id', (req, res) => {
-  if (READONLY) return res.status(503).json(readonlyMessage());
+app.delete('/api/families/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const store = loadStore();
+    const store = await loadStore();
     const i = store.families.findIndex((f) => f.id === id);
     if (i === -1) return res.status(404).json({ error: 'Não encontrado.' });
     store.families.splice(i, 1);
-    saveStore(store);
+    await saveStore(store);
     res.status(204).end();
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }
 });
 
-app.get('/api/public/families/:slug', (req, res) => {
+app.get('/api/public/families/:slug', async (req, res) => {
   try {
     const { slug } = req.params;
-    const store = loadStore();
+    const store = await loadStore();
     const fam = store.families.find((f) => f.slug === slug);
     if (!fam) return res.status(404).json({ error: 'Link inválido ou família não encontrada.' });
     const members = [...fam.members]
@@ -330,24 +326,21 @@ app.get('/api/public/families/:slug', (req, res) => {
   }
 });
 
-app.post('/api/public/families/:slug/rsvp', (req, res) => {
-  if (READONLY) return res.status(503).json(readonlyMessage());
+app.post('/api/public/families/:slug/rsvp', async (req, res) => {
   try {
     const { slug } = req.params;
     const { responses, message, justification } = req.body || {};
     if (!responses || typeof responses !== 'object') {
       return res.status(400).json({ error: 'Envie responses: { [memberId]: "yes" | "no" }' });
     }
-    const rawNote = typeof message === 'string' ? message : typeof justification === 'string' ? justification : '';
+    const rawNote =
+      typeof message === 'string' ? message : typeof justification === 'string' ? justification : '';
     const note =
       typeof rawNote === 'string'
-        ? rawNote
-            .trim()
-            .replace(/\s+/g, ' ')
-            .slice(0, 2000)
+        ? rawNote.trim().replace(/\s+/g, ' ').slice(0, 2000)
         : '';
 
-    const store = loadStore();
+    const store = await loadStore();
     const fam = store.families.find((f) => f.slug === slug);
     if (!fam) return res.status(404).json({ error: 'Família não encontrada.' });
 
@@ -363,13 +356,9 @@ app.post('/api/public/families/:slug/rsvp', (req, res) => {
     }
     fam.respondedAt = new Date().toISOString();
     fam.rsvpNote = note;
-    saveStore(store);
+    await saveStore(store);
 
-    const choices = fam.members.map((m) => ({
-      id: m.id,
-      name: m.name,
-      status: responses[m.id],
-    }));
+    const choices = fam.members.map((m) => ({ id: m.id, name: m.name, status: responses[m.id] }));
     const block = buildRsvpBlock({
       slug: fam.slug,
       familyName: fam.name,
@@ -377,25 +366,21 @@ app.post('/api/public/families/:slug/rsvp', (req, res) => {
       eventTitle: store.eventTitle,
       message: note,
     });
-    res.json({
-      block,
-      familyName: fam.name,
-      responsible: fam.responsible,
-    });
+    res.json({ block, familyName: fam.name, responsible: fam.responsible });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }
 });
 
-app.post('/api/rsvp-import', (req, res) => {
-  if (READONLY) return res.status(503).json(readonlyMessage());
+app.post('/api/rsvp-import', async (req, res) => {
   try {
     const text = String((req.body || {}).text || '').trim();
     if (!text) return res.status(400).json({ error: 'Texto vazio.' });
     const { slug, famName, map } = parseRsvpText(text);
-    const store = loadStore();
+    const store = await loadStore();
     const fam = store.families.find((f) => f.slug === slug);
-    if (!fam) return res.status(400).json({ error: 'Nenhuma família cadastrada com o slug: ' + slug });
+    if (!fam)
+      return res.status(400).json({ error: 'Nenhuma família cadastrada com o slug: ' + slug });
 
     let changed = 0;
     for (const m of fam.members) {
@@ -403,16 +388,16 @@ app.post('/api/rsvp-import', (req, res) => {
       if (map[m.id] !== undefined) m.status = map[m.id];
     }
     fam.respondedAt = new Date().toISOString();
-    saveStore(store);
+    await saveStore(store);
     res.json({ changed, famName: famName || fam.name });
   } catch (e) {
     res.status(400).json({ error: String(e.message || e) });
   }
 });
 
-app.get('/api/export', (_req, res) => {
+app.get('/api/export', async (_req, res) => {
   try {
-    const store = loadStore();
+    const store = await loadStore();
     const exportedAt = new Date().toISOString();
     const payload = {
       v: 1,
@@ -426,7 +411,10 @@ app.get('/api/export', (_req, res) => {
     const filename = `backup-convite-rsvp-${day}.json`;
     const body = JSON.stringify(payload, null, 2);
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    );
     res.send(body);
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
@@ -436,8 +424,7 @@ app.get('/api/export', (_req, res) => {
 const MAX_BACKUP_FAMILIES = 8000;
 const MAX_BACKUP_MEMBERS_PER_FAMILY = 400;
 
-app.post('/api/import-backup', (req, res) => {
-  if (READONLY) return res.status(503).json(readonlyMessage());
+app.post('/api/import-backup', async (req, res) => {
   const started = Date.now();
   try {
     const data = req.body;
@@ -481,7 +468,7 @@ app.post('/api/import-backup', (req, res) => {
         })),
       })),
     };
-    saveStore(store);
+    await saveStore(store);
     const familyCount = store.families.length;
     console.log('[import-backup] ok', { ms: Date.now() - started, familyCount });
     res.json({ ok: true, families: familyCount });
