@@ -26,7 +26,13 @@ function resolveDbPath() {
 
 const DB_PATH = resolveDbPath();
 const db = new Database(DB_PATH);
-db.pragma('journal_mode = WAL');
+/** WAL em /tmp (serverless) costuma gerar contenção e travamentos longos; DELETE é mais previsível na Vercel. */
+if (process.env.VERCEL === '1') {
+  db.pragma('journal_mode = DELETE');
+} else {
+  db.pragma('journal_mode = WAL');
+}
+db.pragma('busy_timeout = 8000');
 
 function initSchema() {
   db.exec(`
@@ -400,7 +406,11 @@ app.get('/api/export', (_req, res) => {
   res.send(body);
 });
 
+const MAX_BACKUP_FAMILIES = 8000;
+const MAX_BACKUP_MEMBERS_PER_FAMILY = 400;
+
 app.post('/api/import-backup', (req, res) => {
+  const started = Date.now();
   try {
     const data = req.body;
     if (!data || data.v !== 1 || !Array.isArray(data.families)) {
@@ -409,7 +419,22 @@ app.post('/api/import-backup', (req, res) => {
           'JSON inválido: esperado v: 1 e families (array). Use o arquivo gerado por "Exportar backup JSON" ou GET /api/export.',
       });
     }
-    const tx = db.transaction(() => {
+    if (data.families.length > MAX_BACKUP_FAMILIES) {
+      return res.status(400).json({
+        error: `Backup com muitas famílias (${data.families.length}). Limite suportado: ${MAX_BACKUP_FAMILIES}.`,
+      });
+    }
+    for (let i = 0; i < data.families.length; i++) {
+      const f = data.families[i];
+      const n = (f.members || []).length;
+      if (n > MAX_BACKUP_MEMBERS_PER_FAMILY) {
+        return res.status(400).json({
+          error: `Família na posição ${i + 1} tem ${n} membros; limite por família: ${MAX_BACKUP_MEMBERS_PER_FAMILY}.`,
+        });
+      }
+    }
+
+    const runImport = db.transaction(() => {
       db.prepare('DELETE FROM family_members').run();
       db.prepare('DELETE FROM families').run();
       setSettings({
@@ -425,21 +450,31 @@ app.post('/api/import-backup', (req, res) => {
       );
       for (const f of data.families) {
         insF.run(
-          f.id,
-          f.slug,
-          f.name,
-          f.responsible || '',
+          String(f.id),
+          String(f.slug),
+          String(f.name ?? ''),
+          String(f.responsible || ''),
           f.respondedAt || null,
-          f.rsvpNote || ''
+          String(f.rsvpNote || '')
         );
         (f.members || []).forEach((m, i) => {
-          insM.run(m.id, f.id, m.name, i, m.status === 'yes' || m.status === 'no' ? m.status : 'pending');
+          insM.run(
+            String(m.id),
+            String(f.id),
+            String(m.name ?? ''),
+            i,
+            m.status === 'yes' || m.status === 'no' ? m.status : 'pending'
+          );
         });
       }
     });
-    tx();
-    res.json({ ok: true, families: listFamilies().length });
+    /** BEGIN IMMEDIATE evita espera indefinida por lock em escrita. */
+    runImport.immediate();
+    const familyCount = db.prepare('SELECT COUNT(*) AS c FROM families').get().c;
+    console.log('[import-backup] ok', { ms: Date.now() - started, familyCount });
+    res.json({ ok: true, families: familyCount });
   } catch (e) {
+    console.error('[import-backup] fail', { ms: Date.now() - started, err: String(e.message || e) });
     res.status(400).json({ error: String(e.message || e) });
   }
 });

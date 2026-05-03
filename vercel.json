@@ -7,8 +7,9 @@
     { "source": "/rsvp/:path*", "destination": "/index.html" }
   ],
   "functions": {
-    "api/**/*.js": {
-      "includeFiles": "server/data/**"
+    "api/server.js": {
+      "includeFiles": "server/data/**",
+      "maxDuration": 60
     }
   }
 }
