@@ -2,3 +2,7 @@ node_modules
 dist
 .DS_Store
 *.log
+
+# SQLite em WAL: o que importa no deploy é só rsvp.sqlite após `npm run db:checkpoint`
+server/data/*.sqlite-wal
+server/data/*.sqlite-shm
